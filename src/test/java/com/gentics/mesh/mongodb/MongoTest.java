@@ -2,9 +2,10 @@ package com.gentics.mesh.mongodb;
 
 import static io.vertx.core.logging.LoggerFactory.LOGGER_DELEGATE_FACTORY_CLASS_NAME;
 
+import java.io.IOException;
+
 import org.junit.ClassRule;
 import org.junit.Test;
-import org.testcontainers.containers.GenericContainer;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
@@ -15,50 +16,49 @@ import io.vertx.ext.mongo.MongoClient;
 public class MongoTest {
 
 	@ClassRule
-	public static GenericContainer mongodb = new GenericContainer("mongo:4.2").withExposedPorts(27017);
+	public static MongoDBContainer mongodb = new MongoDBContainer();
+
+	public static Vertx vertx = Vertx.vertx();
 
 	static {
 		initLogger();
 	}
 
 	private static void initLogger() {
-		//Configurator.setRootLevel(Level.DEBUG);
+		// Configurator.setRootLevel(Level.DEBUG);
 		System.setProperty(LOGGER_DELEGATE_FACTORY_CLASS_NAME, Log4j2LogDelegateFactory.class.getName());
 		LoggerFactory.initialise();
 	}
 
 	@Test
-	public void testMongo() {
-		Vertx vertx = Vertx.vertx();
+	public void testMongo() throws InterruptedException, IOException {
+		String uri = "mongodb://127.0.0.1:" + mongodb.getPort();
+		System.out.println(uri);
 		JsonObject config = new JsonObject();
-		config.put("port", mongodb.getFirstMappedPort());
-		config.put("host", "localhost");
+		config.put("connection_string", uri);
+		config.put("db_name", "test");
 
 		MongoClient mongoClient = MongoClient.createShared(vertx, config);
 
-		// Save document
-		JsonObject document = new JsonObject();
-		document.put("title", "The Hobbit");
-		mongoClient.save("books", document, res -> {
-			if (res.succeeded()) {
-				String id = res.result();
-				System.out.println("Saved book with id " + id);
-			} else {
-				res.cause().printStackTrace();
-			}
+		JsonObject product1 = new JsonObject().put("itemId", "12345").put("name", "Cooler").put("price", "100.0");
+
+		mongoClient.save("products", product1, id -> {
+			System.out.println("Inserted id: " + id.result());
+
+			mongoClient.find("products", new JsonObject().put("itemId", "12345"), res -> {
+				System.out.println("Name is " + res.result().get(0).getString("name"));
+
+				mongoClient.removeDocument("products", new JsonObject().put("itemId", "12345"), rs -> {
+					if (rs.succeeded()) {
+						System.out.println("Product removed ");
+					}
+				});
+
+			});
+
 		});
 
-		// Find documents
-		JsonObject query = new JsonObject();
-		mongoClient.find("books", query, res -> {
-			if (res.succeeded()) {
-				for (JsonObject json : res.result()) {
-					System.out.println(json.encodePrettily());
-				}
-			} else {
-				res.cause().printStackTrace();
-			}
-		});
+		System.in.read();
 	}
 
 }
